@@ -2,12 +2,12 @@ const TelegramBot = require('node-telegram-bot-api')
 const https = require('https')
 const xml2js = require('xml2js')
 
-const telegramToken = <YourTelegramApiToken>
-const catToken = <YourCatApiToken>
+const telegramToken = <TELEGRAM API KEY>
+const catToken = <CAT API KEY>
 
-const catApiAdr = `https://thecatapi.com/api/images/get?format=xml&results_per_page=1&size=med&api_key=${catToken}`
+const catApiAdr = `https://api.thecatapi.com/api/images/get?format=xml&results_per_page=1&size=med&api_key=${catToken}`
 
-const catCategoryAdr = 'https://thecatapi.com/api/categories/list'
+const catCategoryAdr = 'https://api.thecatapi.com/api/categories/list'
 
 const parser = new xml2js.Parser({explicitArray : false, mergeAttrs : true})
 
@@ -83,7 +83,7 @@ bot.onText(/\/help/, (msg, match) => {
   const chatId = msg.chat.id;
   const person = msg.from.first_name
   getCategories()
-  bot.sendMessage(chatId, `Hello ${person} these are the categories you can specify: \n*${categories.join('\n')}* \n To not just get a random cat but a random cat from a specified category type */cat/CATEGROY*`, {parse_mode: 'markdown'})
+  bot.sendMessage(chatId, `Hello ${person} \nto order a random cat type \n*/cat* \nTo order a random cat from a certain category type \n*/cat/CATEGROY* \nThese are the categories you can specify: \n*${categories.join('\n')}* \n`, {parse_mode: 'markdown'})
 })
 
 
