@@ -16,6 +16,6 @@ Commands:
 - /category/<CATEGORY> (get a random got from the specified category)
 
 
-
-
-
+**Future plans**
+- subscribe so that you'll get a cat everday automaticly at a specified time
+- add a way to get more then one cat at a time
