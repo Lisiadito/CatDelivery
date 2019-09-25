@@ -1,8 +1,9 @@
-process.env["NTBA_FIX_319"] = 1;
+process.env['NTBA_FIX_319'] = 1;
 require('dotenv').config()
 
 const TelegramBot = require('node-telegram-bot-api')
 const got = require('got');
+const _ = require('lodash')
 
 const telegramToken = process.env.TELEGRAMAPITOKEN
 const catToken = process.env.CATAPITOKEN
@@ -10,20 +11,31 @@ const catToken = process.env.CATAPITOKEN
 const baseUrl = 'https://api.thecatapi.com/v1'
 const bot = new TelegramBot(telegramToken, {polling: true})
 
-const categories = []
-const breeds = []
+const inline_keyboard_categories = []
+const inline_keyboard_breeds = []
+const inline_keyboard = [ [
+	{
+		text: 'Random cat',
+		callback_data: 'random'
+	},
+	{
+		text: 'List of categories',
+		callback_data: 'categories'
+	},
+	{
+		text: 'List of breeds',
+		callback_data: 'breeds'
+	}
+]]
 
-// initial call
-getCategories()
-getBreeds()
 
 function callACat(url, person, chatId, searchParams) {
-	got(url, {baseUrl, headers: {'x-api-key': catToken}, json: true, searchParams}).then(res => {
+	got(url, {baseUrl, headers: {'x-api-key': catToken}, json: true, query: searchParams} ).then(res => {
 		if (res.body.length > 0 && res.body[0].url){
 			const imgUrl = res.body[0].url
-			bot.sendMessage(chatId, `${person} here is your cat ${imgUrl}`)
+			void bot.sendMessage(chatId, `${person} here is your cat ${imgUrl}`)
 		} else {
-			bot.sendMessage(chatId, `Sorry ${person} something went wrong. No cat for you =(`)
+			void bot.sendMessage(chatId, `Sorry ${person} something went wrong. No cat for you =(`)
 		}
 	}).catch(e => {
 		console.error(`[*] Error Caught: ${e}`)
@@ -31,83 +43,92 @@ function callACat(url, person, chatId, searchParams) {
 }
 
 async function getCategories() {
+	resetKeyboard(inline_keyboard_categories)
 	try {
 		const response = await got('/categories', {baseUrl, json: true})
-		for (const category of response.body) {
-			categories.push({name: category.name, id: category.id})
-		}
+		fillKeyboard(response.body, inline_keyboard_categories)
 	} catch (e) {
-		console.error(`[*] Error Caught: ${e}`)	
+		console.error(`[*] Error Caught: ${e}`)
 	}
 }
 
 async function getBreeds() {
+	resetKeyboard(inline_keyboard_breeds)
 	try {
 		const response = await got('/breeds', {baseUrl, json: true})
-		for (const breed of response.body) {
-			breeds.push({name: breed.name, id: breed.id})
-		}
+		fillKeyboard(response.body, inline_keyboard_breeds)
 	} catch (e) {
-		console.error(`[*] Error Caught: ${e}`)		
-	}	
+		console.error(`[*] Error Caught: ${e}`)
+	}
 }
 
-bot.onText(/^\/cat$/, (msg, match) => {
-  	const chatId = msg.chat.id;
-  	const person = msg.from.first_name
-  	callACat('/images/search', person, chatId)
+function resetKeyboard(keyboard) {
+	keyboard.length = 0
+	keyboard.push([])
+}
+
+function fillKeyboard(data, keyboard) {
+	let counter = 0
+	for (const [index, entry] of data.entries()) {
+		if(index%3 !== 0 || index === 0) {
+			keyboard[counter].push({text: entry.name, callback_data: entry.id.toString()})
+		} else {
+			keyboard.push([])
+			counter++
+			keyboard[counter].push({text: entry.name, callback_data: entry.id.toString()})
+		}
+	}
+}
+
+bot.on('callback_query', query => {
+	const {message: {chat}, from} = query
+
+	switch (query.data) {
+		case 'breeds': getBreeds().then(() => {
+			void bot.sendMessage(chat.id, 'Available breeds', {
+				reply_markup: {
+					inline_keyboard: inline_keyboard_breeds
+				}
+			})
+		}); break
+		case 'categories': getCategories().then(() => {
+			void bot.sendMessage(chat.id, 'Available categories', {
+				reply_markup: {
+					inline_keyboard: inline_keyboard_categories
+				}
+			})
+		}); break
+		case 'random': callACat('/images/search', from.first_name, chat.id); break
+	}
+
+	const category = _.flattenDeep(inline_keyboard_categories).find(elem => elem.callback_data === query.data)
+	if (category) {
+		const searchParams = new URLSearchParams([['category_ids', category.callback_data]])
+		callACat('/images/search', from.first_name, chat.id, searchParams)
+	}
+
+	const breed = _.flattenDeep(inline_keyboard_breeds).find(elem => elem.callback_data === query.data)
+	if (breed) {
+		const searchParams = new URLSearchParams([['breed_id', breed.callback_data]])
+		callACat('/images/search', from.first_name, chat.id, searchParams)
+	}
+
+	void bot.answerCallbackQuery(query.id)
 })
 
-bot.onText(/\/category\/.+/, (msg, match) => {
-  const chatId = msg.chat.id;
-  const person = msg.from.first_name
-  const wish = match[0].substring(10)
-  const category = categories.find(elem => elem.name == wish)
-  if(category) {
-  	const searchParams = new URLSearchParams([['category_ids', category.id]])
-  	callACat('/images/search', person, chatId, searchParams)
-  } else {
-  	bot.sendMessage(chatId, `Sorry ${person} there is no *${wish}* category`, {parse_mode: 'markdown'})
-  }
+bot.onText(/^\/cat$/, (msg) => {
+	const chatId = msg.chat.id;
+	const person = msg.from.first_name
+	callACat('/images/search', person, chatId)
 })
 
-bot.onText(/\/breed\/.+/, (msg, match) => {
+bot.onText(/\/help/, (msg) => {
   const chatId = msg.chat.id;
   const person = msg.from.first_name
-  const wish = match[0].substring(7)
-  const breed = breeds.find(elem => elem.name == wish)
-  if(breed) {
-  	const searchParams = new URLSearchParams([['breed_id', breed.id]])
-  	callACat('/images/search', person, chatId, searchParams)
-  } else {
-  	bot.sendMessage(chatId, `Sorry ${person} there is no *${wish}* breed`, {parse_mode: 'markdown'})
-  }
-})
 
-bot.onText(/\/help/, (msg, match) => {
-  const chatId = msg.chat.id;
-  const person = msg.from.first_name
-  		bot.sendMessage(chatId, `Hello ${person} \nto order a random cat type \n*/cat* \n
-  			To order a random cat from a certain category type eg. \n*/category/boxes* \n
-  			To order a random cat from a certain breed \n*/breed/Sphynx* \n
-  			To get a list of categories or breeds type \n*/help/categories or /help/breeds* \n
-  			`, {parse_mode: 'markdown'})  	
-})
-
-bot.onText(/\/help\/categories/, (msg, match) => {
-  const chatId = msg.chat.id;
-  const person = msg.from.first_name
-  getCategories().then( () => {
-  		bot.sendMessage(chatId, `Hello ${person} \n
-  		These are the categories you can specify: \n*${categories.map(category => category.name).join('\n')}* \n`, {parse_mode: 'markdown'})  	
-  })
-})
-
-bot.onText(/\/help\/breeds/, (msg, match) => {
-  const chatId = msg.chat.id;
-  const person = msg.from.first_name
-  getBreeds().then( () => {
-  		bot.sendMessage(chatId, `Hello ${person} \n
-  		These are the categories you can specify: \n*${breeds.map(category => category.name).join('\n')}* \n`, {parse_mode: 'markdown'})  	
-  })
+	void bot.sendMessage(chatId, `Hey ${person} pick one option:`, {
+		reply_markup: {
+			inline_keyboard
+		}
+	})
 })
